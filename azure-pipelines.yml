@@ -1,0 +1,45 @@
+trigger:
+  branches:
+    include:
+      - main
+      - development   # Run pipeline on both branches
+
+pool:
+  vmImage: ubuntu-latest    # Use latest Ubuntu environment
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.x'    # Ensure Python 3 is installed
+
+  # Install dependencies
+  - script: |
+      python -m pip install --upgrade pip
+      pip install -r requirements.txt
+    displayName: Install dependencies
+  
+  # Run pytest with coverage. Fail pipeline if coverage < 80%
+  - script: |
+      pytest -q --cov=calculator --cov-report=xml --cov-fail-under=80 --junitxml=junit.xml
+    displayName: Run tests with coverage (fail <80%)
+  
+  # Publish test results in Azure DevOps UI
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFormat: 'JUnit'
+      testResultsFiles: 'junit.xml'
+      failTaskOnFailedTests: true
+    displayName: Publish test results
+  
+  # Upload code coverage results
+  - task: PublishCodeCoverageResults@2
+    inputs:
+      codeCoverageTool: 'Cobertura'
+      summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+    displayName: Publish code coverage
+
+  # Run pylint and fail pipeline on issues
+  - task: CmdLine@2
+    inputs:
+      script: 'pylint calculator || exit 1'
+    displayName: Pylint (fail on issues)
