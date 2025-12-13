@@ -113,13 +113,15 @@ stages:
 # =====================================================
 # STAGE 4 — USER ACCEPTANCE TESTING
 # =====================================================
-- stage: UserAcceptanceTesting
-  displayName: "User Acceptance Testing"
-  dependsOn: PerformanceValidation
+- stage: UAT
+  displayName: "UAT - Selenium UI Tests"
+  dependsOn: Performance
   condition: succeeded()
   jobs:
-  - job: SeleniumUAT
-    displayName: "Browser-based UAT"
+  - job: RunSeleniumTests
+    displayName: "Run Selenium tests"
+    pool:
+      vmImage: 'ubuntu-latest'
     steps:
     - checkout: self
 
@@ -134,15 +136,17 @@ stages:
         sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
-      displayName: "Install Chrome browser"
+      displayName: "Install Google Chrome"
 
     - script: |
-        pip install -r requirements.txt
-      displayName: "Install Selenium dependencies"
+        pip install --upgrade pip
+        pip install selenium
+      displayName: "Install Selenium (Python)"
 
     - script: |
         python uat_tests/selenium_test.py
       displayName: "Run Selenium UAT tests"
+
 
 # =====================================================
 # STAGE 5 — PACKAGE BUILD ARTEFACT
