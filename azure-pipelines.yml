@@ -22,6 +22,7 @@ stages:
 
     - script: |
         pip install -r requirements.txt
+        export PYTHONPATH=$(System.DefaultWorkingDirectory)
         pytest --junitxml=unit-tests.xml
       displayName: "Install deps & run pytest"
 
