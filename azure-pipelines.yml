@@ -1,45 +1,215 @@
 trigger:
   branches:
     include:
+      - dev
       - main
-      - development   # Run pipeline on both branches
+
+variables:
+  pythonVersion: '3.10'
 
 pool:
-  vmImage: ubuntu-latest    # Use latest Ubuntu environment
+  vmImage: ubuntu-latest
 
-steps:
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.x'    # Ensure Python 3 is installed
+stages:
 
-  # Install dependencies
-  - script: |
-      python -m pip install --upgrade pip
-      pip install -r requirements.txt
-    displayName: Install dependencies
-  
-  # Run pytest with coverage. Fail pipeline if coverage < 80%
-  - script: |
-      pytest -q --cov=calculator --cov-report=xml --cov-fail-under=80 --junitxml=junit.xml
-    displayName: Run tests with coverage (fail <80%)
-  
-  # Publish test results in Azure DevOps UI
-  - task: PublishTestResults@2
-    inputs:
-      testResultsFormat: 'JUnit'
-      testResultsFiles: 'junit.xml'
-      failTaskOnFailedTests: true
-    displayName: Publish test results
-  
-  # Upload code coverage results
-  - task: PublishCodeCoverageResults@2
-    inputs:
-      codeCoverageTool: 'Cobertura'
-      summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
-    displayName: Publish code coverage
+# =====================================================
+# STAGE 1 — CONTINUOUS INTEGRATION
+# =====================================================
+- stage: ContinuousIntegration
+  displayName: "Continuous Integration"
+  jobs:
+  - job: PythonValidation
+    displayName: "Python validation and quality checks"
+    steps:
+    - checkout: self
 
-  # Run pylint and fail pipeline on issues
-  - task: CmdLine@2
-    inputs:
-      script: 'pylint calculator || exit 1'
-    displayName: Pylint (fail on issues)
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - script: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+      displayName: "Install Python dependencies"
+
+    - script: |
+        export PYTHONPATH=$(System.DefaultWorkingDirectory)
+        pytest --cov=calculator --cov-report=xml --junitxml=unit-tests.xml --cov-fail-under=80
+      displayName: "Execute unit tests with coverage"
+
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFiles: unit-tests.xml
+        testRunTitle: "Unit Test Results"
+      condition: succeededOrFailed()
+
+    - task: PublishCodeCoverageResults@2
+      inputs:
+        codeCoverageTool: Cobertura
+        summaryFileLocation: coverage.xml
+      displayName: "Publish coverage report"
+
+    - script: |
+        pylint calculator
+      displayName: "Run static code analysis (Pylint)"
+
+# =====================================================
+# STAGE 2 — SECURITY SCANNING
+# =====================================================
+- stage: SecurityChecks
+  displayName: "Security Testing"
+  dependsOn: ContinuousIntegration
+  condition: succeeded()
+  jobs:
+  - job: StaticSecurityScan
+    displayName: "Static Application Security Testing"
+    steps:
+    - checkout: self
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.x'
+
+    - script: |
+        pip install bandit
+        bandit -r calculator -o bandit-output.json -f json || true
+      displayName: "Run Bandit SAST scan"
+
+    - publish: bandit-output.json
+      artifact: sast-results
+      displayName: "Publish security scan results"
+
+# =====================================================
+# STAGE 3 — PERFORMANCE VALIDATION
+# =====================================================
+- stage: PerformanceValidation
+  displayName: "Performance Testing"
+  dependsOn: SecurityChecks
+  condition: succeeded()
+  jobs:
+  - job: LoadTesting
+    displayName: "HTTP load testing with k6"
+    steps:
+    - checkout: self
+
+    - script: |
+        sudo apt-get update
+        sudo apt-get install -y ca-certificates gnupg
+        sudo mkdir -p /etc/apt/keyrings
+        curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/k6.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/k6.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+        sudo apt-get update
+        sudo apt-get install -y k6
+      displayName: "Install k6 tool"
+
+    - script: |
+        k6 run loadtest.js --out json=k6-results.json
+      displayName: "Execute k6 performance test"
+
+    - publish: k6-results.json
+      artifact: performance-metrics
+      displayName: "Publish performance metrics"
+
+# =====================================================
+# STAGE 4 — USER ACCEPTANCE TESTING
+# =====================================================
+- stage: UserAcceptanceTesting
+  displayName: "User Acceptance Testing"
+  dependsOn: PerformanceValidation
+  condition: succeeded()
+  jobs:
+  - job: SeleniumUAT
+    displayName: "Browser-based UAT"
+    steps:
+    - checkout: self
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.x'
+
+    - script: |
+        sudo apt-get update
+        sudo apt-get install -y wget gnupg
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+      displayName: "Install Chrome browser"
+
+    - script: |
+        pip install -r requirements.txt
+      displayName: "Install Selenium dependencies"
+
+    - script: |
+        python uat_tests/selenium_test.py
+      displayName: "Run Selenium UAT tests"
+
+# =====================================================
+# STAGE 5 — PACKAGE BUILD ARTEFACT
+# =====================================================
+- stage: BuildArtefact
+  displayName: "Package Build Artefact"
+  dependsOn: UserAcceptanceTesting
+  condition: succeeded()
+  jobs:
+  - job: PackageApplication
+    displayName: "Create deployable artefact"
+    steps:
+    - checkout: self
+
+    - script: |
+        mkdir -p build_output
+        cp -r calculator build_output/
+        cp -r tests build_output/
+        cp requirements.txt build_output/
+      displayName: "Assemble artefact contents"
+
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: build_output
+        artifact: application-package
+      displayName: "Publish build artefact"
+
+# =====================================================
+# STAGE 6 — DEPLOY TO TEST
+# =====================================================
+- stage: DeployToTest
+  displayName: "Deploy to Test Environment"
+  dependsOn: BuildArtefact
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/dev'))
+  jobs:
+  - deployment: TestDeployment
+    displayName: "Test environment deployment"
+    environment: Test
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: application-package
+
+          - script: |
+              echo "Deploying application to TEST environment"
+            displayName: "Deploy to Test"
+
+# =====================================================
+# STAGE 7 — DEPLOY TO PRODUCTION
+# =====================================================
+- stage: DeployToProduction
+  displayName: "Deploy to Production Environment"
+  dependsOn: BuildArtefact
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: ProductionDeployment
+    displayName: "Production deployment"
+    environment: Production
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: application-package
+
+          - script: |
+              echo "Deploying application to PRODUCTION environment"
+            displayName: "Deploy to Production"
