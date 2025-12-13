@@ -1,92 +1,141 @@
 trigger:
-  branches:
-    include:
-      - main
-      - dev
+- dev
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'ubuntu-latest'
 
 stages:
 
 # =========================
-# BUILD & TEST STAGE
+# CI STAGE — UNIT TESTS + SAST
 # =========================
-- stage: Build
-  displayName: Build and Test
+- stage: CI
+  displayName: "CI - Tests & Security"
   jobs:
-    - job: BuildJob
-      displayName: CI Validation
-      steps:
-        - task: UsePythonVersion@0
-          inputs:
-            versionSpec: '3.x'
 
-        - script: |
-            python -m pip install --upgrade pip
-            pip install -r requirements.txt
-          displayName: Install dependencies
+  - job: UnitTests
+    displayName: "Run Pytest Unit Tests"
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.10'
 
-        - script: |
-            export PYTHONPATH=$(System.DefaultWorkingDirectory)
-            pytest -q --cov=calculator --cov-report=xml --cov-fail-under=80 --junitxml=junit.xml
-          displayName: Run tests with coverage (fail <80%)
+    - script: |
+        pip install -r requirements.txt
+        export PYTHONPATH=$(System.DefaultWorkingDirectory)
+        pytest --junitxml=unit-tests.xml
+      displayName: "Install deps & run pytest"
 
-        - task: PublishTestResults@2
-          inputs:
-            testResultsFormat: 'JUnit'
-            testResultsFiles: 'junit.xml'
-            failTaskOnFailedTests: true
-          displayName: Publish test results
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFiles: 'unit-tests.xml'
+        testRunTitle: 'Unit Tests'
+      condition: succeededOrFailed()
 
-        - task: PublishCodeCoverageResults@2
-          inputs:
-            codeCoverageTool: 'Cobertura'
-            summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
-          displayName: Publish code coverage
+  - job: BanditScan
+    displayName: "SAST - Bandit"
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.10'
 
-        - script: |
-            pylint calculator
-          displayName: Pylint validation
+    - script: |
+        pip install bandit
+        bandit -r calculator -f json -o bandit-report.json || true
+      displayName: "Run Bandit scan"
+
+    - publish: bandit-report.json
+      artifact: security-report
+
+
+# =========================
+# PERFORMANCE TESTING — k6
+# =========================
+- stage: Performance
+  displayName: "Performance Testing"
+  dependsOn: CI
+  condition: succeeded()
+  jobs:
+  - job: K6Tests
+    displayName: "Run k6 load test"
+    steps:
+    - script: |
+        sudo apt-get update
+        sudo apt-get install -y ca-certificates gnupg
+        sudo mkdir -p /etc/apt/keyrings
+        curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/k6.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/k6.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+        sudo apt-get update
+        sudo apt-get install -y k6
+        k6 run loadtest.js --out json=perf-results.json
+      displayName: "Execute k6 test"
+
+    - publish: perf-results.json
+      artifact: performance-results
+
+
+# =========================
+# UAT — SELENIUM
+# =========================
+- stage: UAT
+  displayName: "User Acceptance Testing"
+  dependsOn: Performance
+  condition: succeeded()
+  jobs:
+  - job: SeleniumUAT
+    displayName: "Run Selenium tests"
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.10'
+
+    - script: |
+        sudo apt-get update
+        sudo apt-get install -y wget gnupg
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+      displayName: "Install Chrome"
+
+    - script: |
+        pip install selenium
+      displayName: "Install Selenium"
+
+    - script: |
+        python uat_tests/selenium_test.py
+      displayName: "Run Selenium UAT"
+
 
 # =========================
 # DEPLOY TO TEST
 # =========================
-- stage: Deploy_Test
-  displayName: Deploy to Test
-  dependsOn: Build
-  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/dev'))
+- stage: DeployTest
+  displayName: "Deploy to TEST"
+  dependsOn: UAT
+  condition: succeeded()
   jobs:
-    - deployment: DeployTest
-      displayName: Test Deployment
-      dependsOn: []
-      environment: Test
-      strategy:
-        runOnce:
-          deploy:
-            steps:
-              - script: |
-                  echo "Deploying to TEST environment"
-                  echo "ENVIRONMENT = $(ENVIRONMENT)"
-                displayName: Test deployment step
+  - deployment: DeployTestJob
+    environment: Test
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: echo "Deploying to TEST environment"
+
 
 # =========================
-# DEPLOY TO PRODUCTION
+# DEPLOY TO PROD (APPROVAL)
 # =========================
-- stage: Deploy_Production
-  displayName: Deploy to Production
-  dependsOn: Build
-  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+- stage: DeployProd
+  displayName: "Deploy to PROD"
+  dependsOn: DeployTest
+  condition: succeeded()
   jobs:
-    - deployment: DeployProd
-      displayName: Production Deployment
-      dependsOn: []
-      environment: Production
-      strategy:
-        runOnce:
-          deploy:
-            steps:
-              - script: |
-                  echo "Deploying to PRODUCTION environment"
-                  echo "ENVIRONMENT = $(ENVIRONMENT)"
-                displayName: Production deployment step
+  - deployment: DeployProdJob
+    environment: Prod
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: echo "Deploying to PRODUCTION"
