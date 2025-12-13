@@ -2,44 +2,91 @@ trigger:
   branches:
     include:
       - main
-      - development   # Run pipeline on both branches
+      - dev
 
 pool:
-  vmImage: ubuntu-latest    # Use latest Ubuntu environment
+  vmImage: ubuntu-latest
 
-steps:
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.x'    # Ensure Python 3 is installed
+stages:
 
-  # Install dependencies
-  - script: |
-      python -m pip install --upgrade pip
-      pip install -r requirements.txt
-    displayName: Install dependencies
-  
-  # Run pytest with coverage. Fail pipeline if coverage < 80%
-  - script: |
-      pytest -q --cov=calculator --cov-report=xml --cov-fail-under=80 --junitxml=junit.xml
-    displayName: Run tests with coverage (fail <80%)
-  
-  # Publish test results in Azure DevOps UI
-  - task: PublishTestResults@2
-    inputs:
-      testResultsFormat: 'JUnit'
-      testResultsFiles: 'junit.xml'
-      failTaskOnFailedTests: true
-    displayName: Publish test results
-  
-  # Upload code coverage results
-  - task: PublishCodeCoverageResults@2
-    inputs:
-      codeCoverageTool: 'Cobertura'
-      summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
-    displayName: Publish code coverage
+# =========================
+# BUILD & TEST STAGE
+# =========================
+- stage: Build
+  displayName: Build and Test
+  jobs:
+    - job: BuildJob
+      displayName: CI Validation
+      steps:
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: '3.x'
 
-  # Run pylint and fail pipeline on issues
-  - task: CmdLine@2
-    inputs:
-      script: 'pylint calculator || exit 1'
-    displayName: Pylint (fail on issues)
+        - script: |
+            python -m pip install --upgrade pip
+            pip install -r requirements.txt
+          displayName: Install dependencies
+
+        - script: |
+            export PYTHONPATH=$(System.DefaultWorkingDirectory)
+            pytest -q --cov=calculator --cov-report=xml --cov-fail-under=80 --junitxml=junit.xml
+          displayName: Run tests with coverage (fail <80%)
+
+        - task: PublishTestResults@2
+          inputs:
+            testResultsFormat: 'JUnit'
+            testResultsFiles: 'junit.xml'
+            failTaskOnFailedTests: true
+          displayName: Publish test results
+
+        - task: PublishCodeCoverageResults@2
+          inputs:
+            codeCoverageTool: 'Cobertura'
+            summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+          displayName: Publish code coverage
+
+        - script: |
+            pylint calculator
+          displayName: Pylint validation
+
+# =========================
+# DEPLOY TO TEST
+# =========================
+- stage: Deploy_Test
+  displayName: Deploy to Test
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/dev'))
+  jobs:
+    - deployment: DeployTest
+      displayName: Test Deployment
+      dependsOn: []
+      environment: Test
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - script: |
+                  echo "Deploying to TEST environment"
+                  echo "ENVIRONMENT = $(ENVIRONMENT)"
+                displayName: Test deployment step
+
+# =========================
+# DEPLOY TO PRODUCTION
+# =========================
+- stage: Deploy_Production
+  displayName: Deploy to Production
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+    - deployment: DeployProd
+      displayName: Production Deployment
+      dependsOn: []
+      environment: Production
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - script: |
+                  echo "Deploying to PRODUCTION environment"
+                  echo "ENVIRONMENT = $(ENVIRONMENT)"
+                displayName: Production deployment step
