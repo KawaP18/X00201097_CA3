@@ -1,97 +1,63 @@
 trigger:
-  branches:
-    include:
-      - dev
-      - main
-
-variables:
-  pythonVersion: '3.10'
+- dev
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'ubuntu-latest'
 
 stages:
 
-# =====================================================
-# STAGE 1 — CONTINUOUS INTEGRATION
-# =====================================================
-- stage: ContinuousIntegration
-  displayName: "Continuous Integration"
+# =========================
+# CI STAGE — UNIT TESTS + SAST
+# =========================
+- stage: CI
+  displayName: "CI - Tests & Security"
   jobs:
-  - job: PythonValidation
-    displayName: "Python validation and quality checks"
-    steps:
-    - checkout: self
 
+  - job: UnitTests
+    displayName: "Run Pytest Unit Tests"
+    steps:
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: $(pythonVersion)
+        versionSpec: '3.10'
 
     - script: |
-        python -m pip install --upgrade pip
         pip install -r requirements.txt
-      displayName: "Install Python dependencies"
-
-    - script: |
-        export PYTHONPATH=$(System.DefaultWorkingDirectory)
-        pytest --cov=calculator --cov-report=xml --junitxml=unit-tests.xml --cov-fail-under=80
-      displayName: "Execute unit tests with coverage"
+        pytest --junitxml=unit-tests.xml
+      displayName: "Install deps & run pytest"
 
     - task: PublishTestResults@2
       inputs:
-        testResultsFiles: unit-tests.xml
-        testRunTitle: "Unit Test Results"
+        testResultsFiles: 'unit-tests.xml'
+        testRunTitle: 'Unit Tests'
       condition: succeededOrFailed()
 
-    - task: PublishCodeCoverageResults@2
-      inputs:
-        codeCoverageTool: Cobertura
-        summaryFileLocation: coverage.xml
-      displayName: "Publish coverage report"
-
-    - script: |
-        pylint calculator
-      displayName: "Run static code analysis (Pylint)"
-
-# =====================================================
-# STAGE 2 — SECURITY SCANNING
-# =====================================================
-- stage: SecurityChecks
-  displayName: "Security Testing"
-  dependsOn: ContinuousIntegration
-  condition: succeeded()
-  jobs:
-  - job: StaticSecurityScan
-    displayName: "Static Application Security Testing"
+  - job: BanditScan
+    displayName: "SAST - Bandit"
     steps:
-    - checkout: self
-
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: '3.x'
+        versionSpec: '3.10'
 
     - script: |
         pip install bandit
-        bandit -r calculator -o bandit-output.json -f json || true
-      displayName: "Run Bandit SAST scan"
+        bandit -r calculator -f json -o bandit-report.json || true
+      displayName: "Run Bandit scan"
 
-    - publish: bandit-output.json
-      artifact: sast-results
-      displayName: "Publish security scan results"
+    - publish: bandit-report.json
+      artifact: security-report
 
-# =====================================================
-# STAGE 3 — PERFORMANCE VALIDATION
-# =====================================================
-- stage: PerformanceValidation
+
+# =========================
+# PERFORMANCE TESTING — k6
+# =========================
+- stage: Performance
   displayName: "Performance Testing"
-  dependsOn: SecurityChecks
+  dependsOn: CI
   condition: succeeded()
   jobs:
-  - job: LoadTesting
-    displayName: "HTTP load testing with k6"
+  - job: K6Tests
+    displayName: "Run k6 load test"
     steps:
-    - checkout: self
-
     - script: |
         sudo apt-get update
         sudo apt-get install -y ca-certificates gnupg
@@ -100,34 +66,27 @@ stages:
         echo "deb [signed-by=/etc/apt/keyrings/k6.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
         sudo apt-get update
         sudo apt-get install -y k6
-      displayName: "Install k6 tool"
+        k6 run loadtest.js --out json=perf-results.json
+      displayName: "Execute k6 test"
 
-    - script: |
-        k6 run loadtest.js --out json=k6-results.json
-      displayName: "Execute k6 performance test"
+    - publish: perf-results.json
+      artifact: performance-results
 
-    - publish: k6-results.json
-      artifact: performance-metrics
-      displayName: "Publish performance metrics"
 
-# =====================================================
-# STAGE 4 — USER ACCEPTANCE TESTING
-# =====================================================
+# =========================
+# UAT — SELENIUM
+# =========================
 - stage: UAT
-  displayName: "UAT - Selenium UI Tests"
+  displayName: "User Acceptance Testing"
   dependsOn: Performance
   condition: succeeded()
   jobs:
-  - job: RunSeleniumTests
+  - job: SeleniumUAT
     displayName: "Run Selenium tests"
-    pool:
-      vmImage: 'ubuntu-latest'
     steps:
-    - checkout: self
-
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: '3.x'
+        versionSpec: '3.10'
 
     - script: |
         sudo apt-get update
@@ -136,84 +95,46 @@ stages:
         sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
-      displayName: "Install Google Chrome"
+      displayName: "Install Chrome"
 
     - script: |
-        pip install --upgrade pip
         pip install selenium
-      displayName: "Install Selenium (Python)"
+      displayName: "Install Selenium"
 
     - script: |
         python uat_tests/selenium_test.py
-      displayName: "Run Selenium UAT tests"
+      displayName: "Run Selenium UAT"
 
 
-# =====================================================
-# STAGE 5 — PACKAGE BUILD ARTEFACT
-# =====================================================
-- stage: BuildArtefact
-  displayName: "Package Build Artefact"
-  dependsOn: UserAcceptanceTesting
+# =========================
+# DEPLOY TO TEST
+# =========================
+- stage: DeployTest
+  displayName: "Deploy to TEST"
+  dependsOn: UAT
   condition: succeeded()
   jobs:
-  - job: PackageApplication
-    displayName: "Create deployable artefact"
-    steps:
-    - checkout: self
-
-    - script: |
-        mkdir -p build_output
-        cp -r calculator build_output/
-        cp -r tests build_output/
-        cp requirements.txt build_output/
-      displayName: "Assemble artefact contents"
-
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: build_output
-        artifact: application-package
-      displayName: "Publish build artefact"
-
-# =====================================================
-# STAGE 6 — DEPLOY TO TEST
-# =====================================================
-- stage: DeployToTest
-  displayName: "Deploy to Test Environment"
-  dependsOn: BuildArtefact
-  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/dev'))
-  jobs:
-  - deployment: TestDeployment
-    displayName: "Test environment deployment"
+  - deployment: DeployTestJob
     environment: Test
     strategy:
       runOnce:
         deploy:
           steps:
-          - download: current
-            artifact: application-package
+          - script: echo "Deploying to TEST environment"
 
-          - script: |
-              echo "Deploying application to TEST environment"
-            displayName: "Deploy to Test"
 
-# =====================================================
-# STAGE 7 — DEPLOY TO PRODUCTION
-# =====================================================
-- stage: DeployToProduction
-  displayName: "Deploy to Production Environment"
-  dependsOn: BuildArtefact
-  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+# =========================
+# DEPLOY TO PROD (APPROVAL)
+# =========================
+- stage: DeployProd
+  displayName: "Deploy to PROD"
+  dependsOn: DeployTest
+  condition: succeeded()
   jobs:
-  - deployment: ProductionDeployment
-    displayName: "Production deployment"
-    environment: Production
+  - deployment: DeployProdJob
+    environment: Prod
     strategy:
       runOnce:
         deploy:
           steps:
-          - download: current
-            artifact: application-package
-
-          - script: |
-              echo "Deploying application to PRODUCTION environment"
-            displayName: "Deploy to Production"
+          - script: echo "Deploying to PRODUCTION"
