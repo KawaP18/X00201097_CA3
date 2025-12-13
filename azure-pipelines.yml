@@ -1,31 +1,52 @@
 trigger:
   branches:
     include:
-      - development
       - main
+      - dev
+
+pool:
+  vmImage: ubuntu-latest
 
 stages:
+
 # =========================
-# BUILD STAGE
+# BUILD & TEST STAGE
 # =========================
 - stage: Build
-  displayName: Build Stage
+  displayName: Build and Test
   jobs:
     - job: BuildJob
-      displayName: Build
-      pool:
-        vmImage: ubuntu-latest
+      displayName: CI Validation
       steps:
-        - checkout: self
-
         - task: UsePythonVersion@0
           inputs:
-            versionSpec: '3.11'
+            versionSpec: '3.x'
 
         - script: |
             python -m pip install --upgrade pip
             pip install -r requirements.txt
           displayName: Install dependencies
+
+        - script: |
+            pytest -q --cov=calculator --cov-report=xml --cov-fail-under=80 --junitxml=junit.xml
+          displayName: Run tests with coverage (fail <80%)
+
+        - task: PublishTestResults@2
+          inputs:
+            testResultsFormat: 'JUnit'
+            testResultsFiles: 'junit.xml'
+            failTaskOnFailedTests: true
+          displayName: Publish test results
+
+        - task: PublishCodeCoverageResults@2
+          inputs:
+            codeCoverageTool: 'Cobertura'
+            summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+          displayName: Publish code coverage
+
+        - script: |
+            pylint calculator
+          displayName: Pylint validation
 
 # =========================
 # DEPLOY TO TEST
@@ -33,18 +54,19 @@ stages:
 - stage: Deploy_Test
   displayName: Deploy to Test
   dependsOn: Build
-  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/development'))
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/dev'))
   jobs:
     - deployment: DeployTest
-      displayName: Deploy to Test Environment
+      displayName: Test Deployment
+      dependsOn: []
       environment: Test
       strategy:
         runOnce:
           deploy:
             steps:
               - script: |
-                  echo "Deploying application to TEST environment"
-                  echo "Environment: $(ENVIRONMENT)"
+                  echo "Deploying to TEST environment"
+                  echo "ENVIRONMENT = $(ENVIRONMENT)"
                 displayName: Test deployment step
 
 # =========================
@@ -56,7 +78,7 @@ stages:
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   jobs:
     - deployment: DeployProd
-      displayName: Deploy to Production Environment
+      displayName: Production Deployment
       dependsOn: []
       environment: Production
       strategy:
@@ -64,6 +86,6 @@ stages:
           deploy:
             steps:
               - script: |
-                  echo "Deploying application to PRODUCTION environment"
-                  echo "Environment: $(ENVIRONMENT)"
+                  echo "Deploying to PRODUCTION environment"
+                  echo "ENVIRONMENT = $(ENVIRONMENT)"
                 displayName: Production deployment step
