@@ -28,6 +28,7 @@ stages:
           displayName: Install dependencies
 
         - script: |
+            export PYTHONPATH=$(System.DefaultWorkingDirectory)
             pytest -q --cov=calculator --cov-report=xml --cov-fail-under=80 --junitxml=junit.xml
           displayName: Run tests with coverage (fail <80%)
 
