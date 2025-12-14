@@ -2,9 +2,9 @@
 ---
 
 ## Overview
-This project demonstrates the design and implementation of a complete CI/CD pipeline using GitHub Actions for Continuous Integration and Azure DevOps Pipelines for Continuous Deployment.
+This project shows the design and implementation of a complete CI/CD pipeline using GitHub Actions for Continuous Integration and Azure DevOps Pipelines for Continuous Deployment.
 
-The objective of CA3 is to extend beyond basic CI (implemented in CA2) and showcase industry-standard DevOps practices, including:
+The objective of CA3 is to go furthere than basic CI (implemented in CA2) and show industry standard DevOps practices, including:
 
 - Automated testing and validation
 
@@ -18,10 +18,11 @@ The objective of CA3 is to extend beyond basic CI (implemented in CA2) and showc
 
 - Environment-based approval gates for production
 
-A simple Python calculator application is used to support the pipeline. The application itself is intentionally lightweight so that the focus remains on pipeline architecture, automation, and governance, rather than application complexity.
+A simple Python calculator application which was used in CA2 is used for the pipeline. The application itself has very little code so that the focus stays on pipeline architecture, automation and governanceinstead of application complexity.
+
 ---
 ## Repository Structure
-The repository follows a clean, industry-style structure that separates application code, tests, pipeline configuration, and automation scripts.
+The repository follows a clean, industry style structure that separates application code, tests, pipeline configuration and automation scripts.
 
 ### Key Directories and Files
 
@@ -37,11 +38,11 @@ The repository follows a clean, industry-style structure that separates applicat
 
 - pytest.ini – Pytest configuration file
 
-- azure-pipelines.yml – Azure DevOps multi-stage CD pipeline
+- azure-pipelines.yml – Azure DevOps multi stage CD pipeline
 
 - README.md – Technical documentation for CA3
 
-This structure ensures that automation tools can detect the correct components and that responsibilities are clearly separated.
+This structure makes sure that automation tools can find the correct components and that responsibilities are clearly separated.
 ---
 ## Technologies Used
 - Python 3.x
@@ -62,7 +63,7 @@ This structure ensures that automation tools can detect the correct components a
 
 - Azure DevOps Environments – Deployment governance and approvals
 
-Together, these tools form a layered quality assurance pipeline, rather than relying on a single testing mechanism.
+These tools work together to build a pipeline with several layers of quality checks, not just one type of test.
 ---
 ## Local Development Setup
 To run the project locally, the following steps can be followed:
@@ -87,28 +88,28 @@ To run the project locally, the following steps can be followed:
    ```bash
    pytest
    ```
-This mirrors the same commands executed automatically in the CI pipeline.
+These are the same commands the CI pipeline runs automatically.
 
 ---
 ## Application Features
-The application used in this project is a simple Python-based calculator. It provides the following functionality:
+The app in this project is a simple Python calculator. It can do the following:
 
 - Addition
 - Subtraction
 - Multiplication
 
-All functionality is validated through automated unit tests.
-No manual testing is required.
+Automated unit tests check all features.
+You do not need to test anything by hand.
 
 ---
 ## CI Pipeline Implementation
-Continuous Integration is implemented using GitHub Actions. The workflow is triggered:
+GitHub Actions handles Continuous Integration. The workflow starts:
 
 - On every push to the `dev` branch
 
 - On pull requests targeting the `main` branch
 
-This ensures that all code changes are validated automatically before being merged.
+This setup checks all code changes automatically before they are merged.
 
 
 CI Workflow Configuration (`ci.yml`)
@@ -148,7 +149,7 @@ jobs:
 
 ```
 ### Explanation
-The `ci.yml` file defines the contract that all code changes must satisfy.
+The `ci.yml` file sets the rules that every code change must follow.
 
 Key responsibilities of this workflow include:
 
@@ -157,7 +158,8 @@ Key responsibilities of this workflow include:
 - Running automated tests
 - Failing fast when errors are detected
 
-The explicit `PYTHONPATH` configuration resolves a common CI issue where module imports succeed locally but fail in isolated runners. Identifying and fixing this issue demonstrates practical CI debugging skills, which are essential in real-world DevOps roles.
+Setting `PYTHONPATH` configuration resolves a common CI issue where module imports succeed locally but fail in isolated runners. Finding and fixing issues like this is essential in real world DevOps roles.
+
 ### Successful CI Execution
 The screenshot below shows a successful GitHub Actions run, where all CI steps complete without errors.
 ![Successful GitHub Actions run](screenshots/succesfulaction.PNG)
@@ -176,7 +178,7 @@ Unit tests are executed using Pytest as part of the CI workflow.
 - CI fails immediately if tests break
 
 The following screenshot shows successful unit test execution within the pipeline.
-This confirms that all calculator functions are validated automatically.
+This shows that all calculator functions are checked automatically.
 
 ![Unit test results](screenshots/unittests.PNG)
 
@@ -220,7 +222,7 @@ Continuous Deployment is implemented using Azure DevOps Pipelines.
 
 5. Deploy to PROD
 
-Each stage must succeed before the next can run.
+Each stage has to finish successfully before the next one starts.
 
 The screenshot below shows a completed multi-stage pipeline run in Azure DevOps,
 including CI, testing, and deployment stages.
@@ -373,13 +375,16 @@ stages:
           - script: echo "Deploying to PRODUCTION"
 
 ```
+
+---
+
 ### Azure DevOps Pipeline Configuration – Explanation
 
-The `azure-pipelines.yml` file defines a multi-stage Continuous Deployment pipeline that controls how code progresses from validation to production. Each stage acts as a quality gate, ensuring that only fully validated builds are allowed to continue.
+The `azure-pipelines.yml` file sets up a multi-stage deployment pipeline. Each stage checks the build before letting it move forward.
 
 ### Multi-Stage Design and Execution Order
 
-The pipeline is structured into clearly defined stages, each responsible for a specific validation step.
+The pipeline has clear stages. Each one checks a specific part of the process.
 
 A strict execution order is enforced using stage dependencies, meaning:
 
@@ -387,7 +392,9 @@ A strict execution order is enforced using stage dependencies, meaning:
 - Test failures immediately stop the pipeline
 - Deployment stages are protected from unvalidated builds
 
-This ensures that errors are detected early and do not propagate to later stages.
+This setup catches errors early so they do not reach later stages.
+
+---
 
 ### Separation of Testing Responsibilities
 
@@ -403,6 +410,8 @@ This separation improves:
 - Traceability – failures are easy to diagnose
 - Efficiency – resource-intensive tests only run after basic checks pass
 
+---
+
 ### Environment-Based Deployment Governance
 Deployments are managed using Azure DevOps Environments rather than direct script execution. This allows:
 
@@ -410,15 +419,17 @@ Deployments are managed using Azure DevOps Environments rather than direct scrip
 - Centralised visibility of releases
 - Manual approval gates for sensitive environments
 
-The Production environment is protected by a manual approval gate, ensuring that production releases require explicit human authorisation.
+A manual approval gate protects the Production environment. This means someone must approve before anything goes live.
 
 The following screenshot shows the manual approval gate required before deploying
 to the Production environment.
 
 ![Production approval gate](screenshots/prodapporval.PNG)
 
+---
+
 **Summary:**  
-This pipeline design demonstrates a controlled and scalable Continuous Deployment approach that balances automation with governance, aligning closely with real-world DevOps practices.
+This pipeline shows a controlled and scalable way to handle Continuous Deployment. It balances automation with checks, like in real DevOps work.
 
 ---
 ## Performance Testing with k6
@@ -468,11 +479,12 @@ Two Azure DevOps environments are used:
 
 - Prod – protected by approvals
 
-This enforces controlled promotion of builds.
+This setup makes sure builds are promoted in a controlled way.
+
 ---
 ## Production Approval Gate
 
-Production deployment requires manual approval.
+You need to approve production deployments by hand.
 
 ### Why This Matters
 
@@ -487,13 +499,13 @@ The repository follows a two-branch strategy to support controlled development a
 - `dev`: Used for active development and testing.
 - `main`: Represents stable, production-ready code.
 
-All changes are developed and tested on the `dev` branch before being promoted to `main`. Pull requests are used to merge changes into `main`, ensuring that automated CI checks pass before production deployment.
+All changes are made and tested on the `dev` branch first. Use pull requests to merge into `main`, and make sure CI checks pass before deploying to production.
 
-This approach aligns with industry best practices by separating development work from production-ready code and reducing the risk of introducing breaking changes.
+This method follows best practices. It keeps development work separate from production code and lowers the risk of breaking things.
 
 ---
 ## Testing Strategy
-A layered testing strategy is implemented to validate both the application and the CI/CD pipeline. Each testing type runs in a dedicated pipeline stage to ensure clear separation of responsibilities and faster feedback.
+A layered testing strategy checks both the app and the pipeline. Each type of test runs in its own stage for clear separation and quick feedback.
 
 The testing strategy includes:
 
@@ -512,11 +524,9 @@ The testing strategy includes:
 - **User Acceptance Testing (UAT)**  
   Selenium WebDriver executes browser-based tests to validate UI-level automation and demonstrate realistic end-to-end testing capability.
 
-Separating these testing layers ensures that failures are easy to identify and that each stage focuses on a specific quality attribute.
-
-
-By separating testing concerns into distinct pipeline stages, the CI/CDworkflow improves traceability and fault isolation.
-Failures can be identified quickly without impacting unrelated pipeline stages.
+By separating testing layers, it is easier to spot failures and each stage can focus on one thing.
+Putting each test type in its own stage makes it easier to trace problems and isolate faults.
+You can find failures quickly without affecting other parts of the pipeline.
 
 ---
 ## Environment Setup and Configuration
@@ -525,62 +535,63 @@ Two deployment environments are configured in Azure DevOps to support controlled
 - **Test**: Used to validate deployments after all automated testing stages have completed.
 - **Prod**: Represents the production environment and is protected by manual approval gates.
 
-These environments are managed using Azure DevOps Environments and are explicitly referenced within the pipeline YAML configuration. This ensures that deployments are environment-aware and follow a structured promotion process.
+Azure DevOps manages these environments and the pipeline YAML points to them directly. This makes sure deployments know which environment they are for and follow a set process.
 
 ---
 ## Deployment Process
 
-The deployment process follows a structured and controlled flow to minimise risk and ensure stability.
+The deployment process uses a clear, controlled flow to lower risk and keep things stable.
 
-Once all CI and testing stages have completed successfully, the application is deployed automatically to the **Test** environment. This deployment verifies that the pipeline can successfully promote a validated build to a downstream environment.
+After all CI and testing stages pass, the app is deployed automatically to the **Test** environment. This checks that the pipeline can move a validated build forward.
 
-Deployment to the **Prod** environment is protected by a manual approval gate. A deployment cannot proceed until approval is granted, ensuring that production releases are intentional and reviewed.
+Deploying to **Prod** needs manual approval. Nothing goes live until someone approves it so all releases are checked first.
 
-This controlled promotion model mirrors real-world DevOps practices where confidence in releases is built progressively
+This controlled promotion is how real DevOps teams build confidence in releases. You do not deploy straight to production.
 rather than deploying directly to production.
 
 ---
 ## Security and Performance Testing
 ### Security Testing
-Security testing is implemented using Bandit, a static analysis tool for Python applications. Bandit scans the codebase during the CI stage to identify common security issues such as insecure function usage or unsafe configurations.
+Bandit handles security testing. It scans the code during CI to find common security problems, like unsafe functions or settings.
 
-Security scan results are generated in report format and published as pipeline artefacts for review.
+The security scan makes a report, which the pipeline saves for review.
 
 ### Performance Testing
-Performance testing is implemented using k6. A scripted load test is executed during the pipeline to demonstrate how performance validation can be integrated into CI/CD workflows.
+k6 runs performance tests. The pipeline runs a scripted load test to show how performance checks fit into CI/CD.
 
-The performance tests simulate HTTP requests against a sample endpoint and generate performance metrics, which are stored as pipeline artefacts.
+The performance tests send HTTP requests to a sample endpoint and save the results as pipeline artefacts.
 
 ---
 ## UAT Testing with Selenium
-User Acceptance Testing (UAT) is implemented using Selenium WebDriver. Selenium is used to demonstrate browser-based test automation within the CI/CD pipeline.
+Selenium WebDriver handles User Acceptance Testing (UAT). It shows how to automate browser tests in the CI/CD pipeline.
 
-The Selenium tests run in a dedicated UAT stage after performance testing has completed. Google Chrome is installed dynamically in the pipeline, and the tests are executed in a headless environment.
+The Selenium tests run in their own UAT stage after performance tests. The pipeline installs Chrome and runs the tests in headless mode.
 
-While the calculator application itself is validated through unit tests, Selenium is used to showcase realistic end-to-end UI automation and pipeline integration, which is the primary focus of this assessment.
+Unit tests check the calculator app, but Selenium is here to show real end-to-end UI automation and how it fits into the pipeline.
 
 ---
 ## Pipeline Approval Gates
-The Production deployment stage is protected using Azure DevOps pipeline approval gates. Before a deployment to the **Prod** environment can proceed, manual approval is required.
+Azure DevOps approval gates protect the Production deployment stage. You must approve manually before anything goes to Prod.
 
-This mechanism ensures that production releases are controlled and prevents unauthorised or accidental deployments. Approval gates reflect real-world DevOps practices where production environments are safeguarded through human oversight.
+This keeps production releases controlled and stops accidental deployments. Approval gates are a real DevOps practice to protect production with human checks.
+
 
 ---
 ## Troubleshooting Guide
 - **Pytest import errors**  
-  Ensure the repository root is included in the `PYTHONPATH` during CI execution so that application modules can be resolved correctly.
+  Make sure the repository root is in `PYTHONPATH` during CI so the app modules are found.
 
 - **Selenium errors (Chrome not found)**  
-  Verify that Google Chrome is installed in the UAT stage before executing Selenium tests.
+  Check that Google Chrome is installed in the UAT stage before running Selenium tests.
 
 - **k6 installation failures**  
-  Ensure the official k6 repository and signing key are added before attempting installation.
-
+  Add the official k6 repository and signing key before installing.
+  
 - **Pipeline not triggering**  
-  Confirm that branch triggers are correctly defined in the pipeline YAML file.
-
+  Check that branch triggers are set up right in the pipeline YAML.
+  
 - **Environment not found or unauthorised**  
-  Ensure that Azure DevOps environments exist and are authorised for use by the pipeline.
+  Make sure Azure DevOps environments exist and the pipeline can use them.
 
 ---
 ## References
@@ -590,7 +601,6 @@ This mechanism ensures that production releases are controlled and prevents unau
 - Selenium WebDriver Documentation: https://www.selenium.dev/documentation  
 - Azure DevOps Pipelines Documentation: https://learn.microsoft.com/azure/devops/pipelines
 ---
-## Appendix – Application Code Overview
-The calculator application and unit tests are carried forward from CA2.
-The application code remains unchanged, as the focus of CA3 is CI/CD
-pipeline extension rather than application development.
+## Appendix
+- The calculator app and its unit tests come from CA2.
+- The application code is not changed because the focus of CA3 is CI/CD pipeline extension rather than application development.
