@@ -594,6 +594,7 @@ This keeps production releases controlled and stops accidental deployments. Appr
   Make sure Azure DevOps environments exist and the pipeline can use them.
 
 ---
+
 ## References
 - Pytest Documentation: https://docs.pytest.org  
 - Bandit Security Scanner: https://bandit.readthedocs.io  
@@ -604,3 +605,6 @@ This keeps production releases controlled and stops accidental deployments. Appr
 ## Appendix
 - The calculator app and its unit tests come from CA2.
 - The application code is not changed because the focus of CA3 is CI/CD pipeline extension rather than application development.
+
+
+=======
